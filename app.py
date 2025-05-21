@@ -3,11 +3,11 @@ import os
 import google.generativeai as genai
 from pathlib import Path
 import tempfile
+import platform
 
 # ✅ Set up Gemini API
 os.environ["GENERATIVEAI_API_KEY"] = "AIzaSyA9d_mJIx2gxeBS-4wJi766eukWD8Q3MXk"
 genai.configure(api_key=os.environ["GENERATIVEAI_API_KEY"])
-
 
 # ✅ Gemini configuration
 generation_config = {
@@ -65,7 +65,6 @@ Only report a problem if you clearly see one. If the plant looks healthy, say so
 Keep the language clear and easy to understand for farmers or plant owners. Do not include scientific jargon or advanced terminology.
 """
 
-
 # ✅ Helper functions
 def read_image_data(file_path):
     path = Path(file_path)
@@ -84,65 +83,94 @@ def generate_disease_diagnosis(image_path, description):
 
 st.set_page_config(page_title="🌿 SISAGROAI: Plant Doctor", layout="centered")
 
-# 🌱 SISAGROAI Welcome Message
+# SISAGROAI Welcome Message
 st.markdown("""
 # 👋 Welcome to **SISAGRO-AI**
-### 🧑‍🌾 The Best Doctor for Your Plant 🌿
+### 🧑‍🌾 The Best Doctor for Your Plant 
 
-Please **snap a picture** or **upload a plant leaf image** to get a summary and expert diagnosis.
+Please **snap the picture** or **upload the plant image** to get a summary and expert diagnosis.
 
-SISAGROAI helps you:
-- 📷 Analyze your plant's condition instantly
-- 🪴 Detect diseases or nutrient issues
-- 💊 Get treatment advice with real product names
+SISAGRO-AI helps you to:
+- Analyze your plant's condition instantly
+- Detect diseases or nutrient issues
+- Get treatment advice with real product names
+
+Note: We are always improving our system to keep you upto date
 """)
 
-# st.title("📸 Plant Summary & Disease Diagnosis")
-
-# ✅ Streamlit app
-# st.set_page_config(page_title="🌿 Plant Diagnosis", layout="centered")
-# st.title("🌿 Plant Summary & Disease Diagnosis")
-# st.markdown("Upload or capture a photo of a plant to receive a summary and health analysis.")
-
-upload_method = st.radio("Choose image input method", ["📷 Camera", "🖼 Upload Image"])
+# ✅ Detect device type (simple fallback: mobile = Android or iOS)
+user_agent = st.session_state.get("user_agent", platform.platform().lower())
+mobile_device = any(x in user_agent for x in ["android", "iphone", "ipad"])
 
 image_path = None
 plant_description = None
 
-if upload_method == "📷 Camera":
-    image = st.camera_input("Capture plant image")
-    if image:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
-            f.write(image.getvalue())
-            image_path = f.name
+if mobile_device:
+    st.info("📱 Mobile device detected: using back camera.")
+    st.components.v1.html("""
+    <video id=\"video\" autoplay playsinline style=\"width:100%; max-width: 100%; border: 2px solid green; border-radius: 8px;\"></video><br>
+    <button onclick=\"takePhoto()\" style=\"padding: 10px 20px; font-size: 16px;\">\ud83d\udcf8 Take Photo</button>
+    <canvas id=\"canvas\" style=\"display: none;\"></canvas>
+    <script>
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+      const context = canvas.getContext('2d');
 
-elif upload_method == "🖼 Upload Image":
-    uploaded = st.file_uploader("Upload plant image", type=["jpg", "jpeg", "png"])
-    if uploaded:
-        st.image(uploaded, caption="Uploaded Image", use_column_width=True)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
-            f.write(uploaded.read())
-            image_path = f.name
+      navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { exact: \"environment\" } },
+        audio: false
+      }).then(stream => {
+        video.srcObject = stream;
+      }).catch(err => {
+        alert(\"Error accessing camera: \" + err.message);
+      });
 
-# ✅ Auto description
-if image_path:
-    with st.spinner("🔍 Generating plant summary..."):
-        try:
-            plant_description = generate_auto_description(image_path)
-            st.success("✅ Summary generated")
-            st.markdown("### 📋 Plant Summary")
-            st.write(plant_description)
-        except Exception as e:
-            st.error(f"Error generating plant description: {e}")
+      function takePhoto() {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL(\"image/jpeg\");
+        const pyMsg = {'imageData': dataUrl};
+        window.parent.postMessage(pyMsg, '*');
+      }
+    </script>
+    """, height=500)
+    st.warning("⚠️ Captured image not saved because Streamlit HTML component lacks image bridge. Use desktop for full analysis.")
+else:
+    upload_method = st.radio("Choose image input method", ["📷 Camera", "🖼 Upload Image"])
 
-# ✅ Disease analysis button
-if plant_description:
-    if st.button("🔬 Analyze for Plant Diseases"):
-        with st.spinner("Analyzing image for plant health..."):
+    if upload_method == "📷 Camera":
+        image = st.camera_input("Capture plant image")
+        if image:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
+                f.write(image.getvalue())
+                image_path = f.name
+
+    elif upload_method == "🖼 Upload Image":
+        uploaded = st.file_uploader("Upload plant image", type=["jpg", "jpeg", "png"])
+        if uploaded:
+            st.image(uploaded, caption="Uploaded Image", use_column_width=True)
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as f:
+                f.write(uploaded.read())
+                image_path = f.name
+
+    if image_path:
+        with st.spinner("🔍 Generating plant summary..."):
             try:
-                diagnosis = generate_disease_diagnosis(image_path, plant_description)
-                st.success("✅ Detailed Diagnosis Complete!")
-                st.markdown("### 🧪 Disease Analysis Result")
-                st.write(diagnosis)
+                plant_description = generate_auto_description(image_path)
+                st.success("✅ Summary generated")
+                st.markdown("### 📋 Plant Summary")
+                st.write(plant_description)
             except Exception as e:
-                st.error(f"Error during analysis: {e}")
+                st.error(f"Error generating plant description: {e}")
+
+    if plant_description:
+        if st.button("🔬 Analyze for Plant Diseases"):
+            with st.spinner("Analyzing image for plant health..."):
+                try:
+                    diagnosis = generate_disease_diagnosis(image_path, plant_description)
+                    st.success("✅ Detailed Diagnosis Complete!")
+                    st.markdown("### 🧪 Disease Analysis Result")
+                    st.write(diagnosis)
+                except Exception as e:
+                    st.error(f"Error during analysis: {e}")
