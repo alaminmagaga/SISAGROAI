@@ -3,7 +3,6 @@ import os
 import google.generativeai as genai
 from pathlib import Path
 import tempfile
-from googletrans import Translator
 
 # ✅ Set up Gemini API
 os.environ["GENERATIVEAI_API_KEY"] = "AIzaSyA9d_mJIx2gxeBS-4wJi766eukWD8Q3MXk"
@@ -26,9 +25,6 @@ model = genai.GenerativeModel(
     generation_config=generation_config,
     safety_settings=safety_settings,
 )
-
-# Setup translator (replaced translators with googletrans)
-translator = Translator()
 
 # ✅ Prompts
 
@@ -90,18 +86,19 @@ Write two short and clear paragraphs in simple English.
 Avoid complex words. Keep it easy for rural farmers or general audience to understand.
 """
 
-# ✅ Translation with chunking (replaced with googletrans)
-def translate_to_hausa(text, chunk_size=1000):
+# ✅ Translation using Gemini model
+def translate_to_hausa(text):
     try:
-        # Split text into chunks to handle potential length limitations
-        chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
-        translated_chunks = []
+        translation_prompt = f"""
+        Translate the following English text to Hausa language:
         
-        for chunk in chunks:
-            translated = translator.translate(chunk, src='en', dest='ha').text
-            translated_chunks.append(translated)
-            
-        return "\n".join(translated_chunks)
+        "{text}"
+        
+        Provide ONLY the Hausa translation with no additional text or explanations.
+        """
+        
+        translation_response = model.generate_content(translation_prompt)
+        return translation_response.text.strip()
     except Exception as e:
         st.warning(f"Translation service temporarily unavailable. Showing English version.")
         return text  # Fallback to original text if translation fails
