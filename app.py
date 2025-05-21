@@ -1,9 +1,9 @@
 import streamlit as st
+import translators as ts
 import os
 import google.generativeai as genai
 from pathlib import Path
 import tempfile
-from deep_translator import GoogleTranslator
 
 # ✅ Set up Gemini API
 os.environ["GENERATIVEAI_API_KEY"] = "AIzaSyA9d_mJIx2gxeBS-4wJi766eukWD8Q3MXk"
@@ -27,17 +27,15 @@ model = genai.GenerativeModel(
     safety_settings=safety_settings,
 )
 
-# ✅ English Prompts
+# ✅ Prompts
+
+# Full prompt for English UI
 auto_description_prompt = """
-You are a plant expert. Look at the image and write a short, clear paragraph to describe what you see.
-
-In your description, include (if visible):
-- The name or type of the plant
-- What the plant looks like (size, shape, color, health)
-- What the soil looks like (dry, wet, cracked, etc.)
-- Whether the soil looks rich or poor
-
-Only write one simple paragraph. Use plain English.
+Analyze the entire plant from top to bottom. Identify and correctly name the plant. 
+Provide a short and accurate description, including details of all visible parts 
+(leaves, stem, flowers, fruits, and roots if visible). Assess the overall health and 
+condition of the plant, including any signs of disease, pests, or deficiencies. 
+Additionally, examine and describe the nature and condition of the surrounding soil.
 """
 
 disease_analysis_template = """
@@ -45,7 +43,11 @@ The following is a description of the plant image:
 
 "{description}"
 
-Now, examine the image again and analyze it for any plant diseases or nutrient deficiencies.
+Now, carefully examine the plant for any signs of disease, stress, or deficiency. 
+Determine whether the plant is lacking water or experiencing overwatering. 
+Assess whether the plant currently requires fertilizer based on its condition. 
+If fertilizer is needed, recommend the specific type and formulation suitable 
+for the plant’s current growth stage.
 
 Only report a problem if you clearly see one. If the plant looks healthy, say so clearly.
 
@@ -54,45 +56,84 @@ Only report a problem if you clearly see one. If the plant looks healthy, say so
 2. Describe the likely cause.
 3. Suggest what to do next (treatment or care tips), and specifically:
    - Mention **popular brand names or generic names of insecticides, fungicides, or fertilizers** commonly used for the issue.
-   - If the disease is fungal, recommend at least one fungicide (e.g., **Ridomil, Mancozeb, Copper-based fungicide**).
-   - If it's a pest, suggest an insecticide (e.g., **Cypermethrin, Confidor, Lambda-Cyhalothrin**).
-   - For nutrient deficiencies, suggest specific types of fertilizer (e.g., **urea for nitrogen, NPK 15:15:15**, etc.)
+   - If the disease is fungal, recommend at least one fungicide.
+   - If it's a pest, suggest an insecticide.
+   - For nutrient deficiencies, suggest specific types of fertilizer.
 
 4. If the plant looks healthy, just say it is healthy and no treatment is needed.
 
 Use clear and simple language.
 """
 
-# ✅ Helper Functions
+# Simplified for Hausa UI
+hausa_auto_description_prompt = """
+You are a plant expert. Summarize what you observe in the image in one short, clear, plain English paragraph. Focus on:
+- General appearance of the plant
+- Health condition
+- Basic visible parts (e.g., leaves, stem, soil)
+Keep the paragraph short and easy to translate into Hausa. Do not use technical terms.
+"""
+
+hausa_disease_analysis_prompt = """
+You are a plant doctor. Based on the description:
+
+"{description}"
+
+Write two short and clear paragraphs in simple English.
+
+1. First paragraph: Mention if the plant is healthy or if there are any signs of stress, disease, pest, or nutrient issues.
+2. Second paragraph: Give one or two care suggestions like water needs, fertilizer type, or treatment if needed.
+
+Avoid complex words. Keep it easy for rural farmers or general audience to understand.
+"""
+
+# ✅ Translation with chunking
+def translate_to_hausa(text, provider="bing", chunk_size=800):
+    try:
+        chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+        translated_chunks = []
+        for chunk in chunks:
+            translated = ts.translate_text(
+                query_text=chunk,
+                translator=provider,
+                from_language='auto',
+                to_language='ha',
+                timeout=10
+            )
+            translated_chunks.append(translated)
+        return "\n".join(translated_chunks)
+    except Exception as e:
+        return f"⚠️ Translation failed: {e}"
+
+# ✅ Core functions
 def read_image_data(file_path):
     path = Path(file_path)
     return {"mime_type": "image/jpeg", "data": path.read_bytes()}
 
-def generate_auto_description(image_path):
+def generate_auto_description(image_path, lang="English"):
     image_data = read_image_data(image_path)
-    response = model.generate_content([auto_description_prompt, image_data])
+    prompt = hausa_auto_description_prompt if lang == "Hausa" else auto_description_prompt
+    response = model.generate_content([prompt, image_data])
     return response.text.strip()
 
-def generate_disease_diagnosis(image_path, description):
+def generate_disease_diagnosis(image_path, description, lang="English"):
     image_data = read_image_data(image_path)
-    combined_prompt = disease_analysis_template.replace("{description}", description)
-    response = model.generate_content([combined_prompt, image_data])
+    prompt = (
+        hausa_disease_analysis_prompt.replace("{description}", description)
+        if lang == "Hausa"
+        else disease_analysis_template.replace("{description}", description)
+    )
+    response = model.generate_content([prompt, image_data])
     return response.text.strip()
 
-def translate_to_hausa(text):
-    try:
-        return GoogleTranslator(source='auto', target='ha').translate(text)
-    except Exception as e:
-        return f"⚠️ Failed to translate: {e}"
-
-# ✅ Streamlit App
+# ✅ Streamlit UI
 st.set_page_config(page_title="🌿 SISAGROAI", layout="centered")
 lang = st.sidebar.radio("🌐 Choose Language / Zaɓi Harshe", ["English", "Hausa"])
 
 image_path = None
 plant_description = None
 
-# UI Layout by Language
+# UI Labels
 if lang == "English":
     st.markdown("""
     # 👋 Welcome to **SISAGRO-AI**
@@ -100,16 +141,15 @@ if lang == "English":
 
     Upload or snap a plant image to get:
     - Instant analysis
-    - Disease or deficiency detection
-    - Treatment suggestions with real product names
+    - Disease, deficiency, or abnormality detection
+    - Growth-stage fertilizer recommendations
     """)
-
     upload_method = st.radio("Choose image input method", ["📷 Camera", "🖼 Upload Image"])
     capture_label = "Capture plant image"
     upload_label = "Upload plant image"
     summary_label = "📋 Plant Summary"
-    analysis_button = "🔬 Analyze for Plant Diseases"
-    result_label = "🧪 Disease Analysis Result"
+    analysis_button = "🔬 Analyze the Plant Abnormalities"
+    result_label = "🧪 Abnormality Analysis Result"
 
 else:
     st.markdown("""
@@ -118,18 +158,17 @@ else:
 
     Ɗora ko ɗauki hoton shuka domin:
     - Nazarin lafiyar shuka
-    - Gano cuta ko rashin sinadaran gina jiki
-    - Samun shawarwarin magani da sunan kaya
+    - Gano cuta, rashin ruwa, ko matsalar gina jiki
+    - Shawarar amfani da takin zamani bisa matakin girma
     """)
-
     upload_method = st.radio("Zaɓi hanyar ɗora hoto", ["📷 Dauki Hoto", "🖼 Ɗora Hoto"])
     capture_label = "Dauki hoton shuka"
     upload_label = "Ɗora hoton shuka"
     summary_label = "📋 Bayanin Shuka"
-    analysis_button = "🔬 Binciken Cutar Shuka"
+    analysis_button = "🔬 Binciken Matsalolin Shuka"
     result_label = "🧪 Sakamakon Nazari"
 
-# Image Upload Handling
+# Image Input
 if upload_method.startswith("📷"):
     image = st.camera_input(capture_label)
     if image:
@@ -144,23 +183,23 @@ else:
             f.write(uploaded.read())
             image_path = f.name
 
-# ✅ Generate Description
+# Generate Summary
 if image_path:
     with st.spinner("🔍 Generating plant summary..."):
         try:
-            plant_description = generate_auto_description(image_path)
+            plant_description = generate_auto_description(image_path, lang=lang)
             st.success("✅ Summary generated")
             st.markdown(f"### {summary_label}")
             st.write(translate_to_hausa(plant_description) if lang == "Hausa" else plant_description)
         except Exception as e:
             st.error(f"⚠️ Error: {e}")
 
-# ✅ Analyze Disease
+# Abnormality Analysis
 if plant_description:
     if st.button(analysis_button):
         with st.spinner("🔎 Analyzing plant health..."):
             try:
-                diagnosis = generate_disease_diagnosis(image_path, plant_description)
+                diagnosis = generate_disease_diagnosis(image_path, plant_description, lang=lang)
                 st.success("✅ Analysis Complete")
                 st.markdown(f"### {result_label}")
                 st.write(translate_to_hausa(diagnosis) if lang == "Hausa" else diagnosis)
