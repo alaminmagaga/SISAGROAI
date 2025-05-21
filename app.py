@@ -106,35 +106,54 @@ image_path = None
 plant_description = None
 
 if mobile_device:
-    st.info("📱 Mobile device detected: using back camera.")
+    st.info("📱 Mobile device detected: using back camera with zoom.")
     st.components.v1.html("""
     <video id=\"video\" autoplay playsinline style=\"width:100%; max-width: 100%; border: 2px solid green; border-radius: 8px;\"></video><br>
+    <input type=\"range\" id=\"zoom\" min=\"1\" max=\"3\" step=\"0.1\" value=\"1\" onchange=\"setZoom(this.value)\" style=\"width: 100%\"><br>
     <button onclick=\"takePhoto()\" style=\"padding: 10px 20px; font-size: 16px;\">\ud83d\udcf8 Take Photo</button>
     <canvas id=\"canvas\" style=\"display: none;\"></canvas>
     <script>
+      let stream;
       const video = document.getElementById('video');
       const canvas = document.getElementById('canvas');
       const context = canvas.getContext('2d');
+      const zoomControl = document.getElementById('zoom');
 
-      navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { exact: \"environment\" } },
-        audio: false
-      }).then(stream => {
-        video.srcObject = stream;
-      }).catch(err => {
-        alert(\"Error accessing camera: \" + err.message);
-      });
+      async function initCamera() {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: { exact: 'environment' },
+              zoom: { ideal: 2 }
+            },
+            audio: false
+          });
+          video.srcObject = stream;
+        } catch (err) {
+          alert("Error accessing camera: " + err.message);
+        }
+      }
+
+      function setZoom(zoomLevel) {
+        const [track] = stream.getVideoTracks();
+        const capabilities = track.getCapabilities();
+        if (capabilities.zoom) {
+          track.applyConstraints({ advanced: [{ zoom: zoomLevel }] });
+        }
+      }
 
       function takePhoto() {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL(\"image/jpeg\");
+        const dataUrl = canvas.toDataURL("image/jpeg");
         const pyMsg = {'imageData': dataUrl};
         window.parent.postMessage(pyMsg, '*');
       }
+
+      initCamera();
     </script>
-    """, height=500)
+    """, height=600)
     st.warning("⚠️ Captured image not saved because Streamlit HTML component lacks image bridge. Use desktop for full analysis.")
 else:
     upload_method = st.radio("Choose image input method", ["📷 Camera", "🖼 Upload Image"])
