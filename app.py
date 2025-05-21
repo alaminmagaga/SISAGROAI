@@ -1,9 +1,9 @@
 import streamlit as st
-import translators as ts
 import os
 import google.generativeai as genai
 from pathlib import Path
 import tempfile
+from googletrans import Translator
 
 # ✅ Set up Gemini API
 os.environ["GENERATIVEAI_API_KEY"] = "AIzaSyA9d_mJIx2gxeBS-4wJi766eukWD8Q3MXk"
@@ -27,6 +27,9 @@ model = genai.GenerativeModel(
     safety_settings=safety_settings,
 )
 
+# Setup translator (replaced translators with googletrans)
+translator = Translator()
+
 # ✅ Prompts
 
 # Full prompt for English UI
@@ -47,7 +50,7 @@ Now, carefully examine the plant for any signs of disease, stress, or deficiency
 Determine whether the plant is lacking water or experiencing overwatering. 
 Assess whether the plant currently requires fertilizer based on its condition. 
 If fertilizer is needed, recommend the specific type and formulation suitable 
-for the plant’s current growth stage.
+for the plant's current growth stage.
 
 Only report a problem if you clearly see one. If the plant looks healthy, say so clearly.
 
@@ -87,23 +90,21 @@ Write two short and clear paragraphs in simple English.
 Avoid complex words. Keep it easy for rural farmers or general audience to understand.
 """
 
-# ✅ Translation with chunking
-def translate_to_hausa(text, provider="bing", chunk_size=800):
+# ✅ Translation with chunking (replaced with googletrans)
+def translate_to_hausa(text, chunk_size=1000):
     try:
+        # Split text into chunks to handle potential length limitations
         chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
         translated_chunks = []
+        
         for chunk in chunks:
-            translated = ts.translate_text(
-                query_text=chunk,
-                translator=provider,
-                from_language='auto',
-                to_language='ha',
-                timeout=10
-            )
+            translated = translator.translate(chunk, src='en', dest='ha').text
             translated_chunks.append(translated)
+            
         return "\n".join(translated_chunks)
     except Exception as e:
-        return f"⚠️ Translation failed: {e}"
+        st.warning(f"Translation service temporarily unavailable. Showing English version.")
+        return text  # Fallback to original text if translation fails
 
 # ✅ Core functions
 def read_image_data(file_path):
