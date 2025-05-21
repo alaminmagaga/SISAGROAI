@@ -1,4 +1,5 @@
 streamlit
 google-generativeai
 pillow
-translators
+translators>=5.9.4
+
