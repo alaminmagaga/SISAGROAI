@@ -6,7 +6,7 @@ import tempfile
 from PIL import Image
 
 # ✅ Set up Gemini API
-os.environ["GENERATIVEAI_API_KEY"] = "AIzaSyA9d_mJIx2gxeBS-4wJi766eukWD8Q3MXk"
+os.environ["GENERATIVEAI_API_KEY"] = "AIzaSyBtiWaiaSSEMj_sqjPqCVdvBtr9BT54QnM"
 genai.configure(api_key=os.environ["GENERATIVEAI_API_KEY"])
 
 generation_config = {
